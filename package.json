@@ -1,0 +1,16 @@
+{
+  "name": "webdown",
+  "version": "1.0.0",
+  "description": "down webpage to local form online and auto arrange it",
+  "main": "webdown.js",
+  "scripts": {
+    "test": "webdown.js"
+  },
+  "keywords": [
+    "webdown",
+    "static",
+    "html"
+  ],
+  "author": "ahuing",
+  "license": "ISC"
+}
