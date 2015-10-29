@@ -6,19 +6,21 @@ var iconv = require('iconv-lite');
 var url = require('url');
 // 基本配置项
 var optionsBase = {
-    name: 'hfhouse.com', // 项目目录
-    baseUrl: 'http://www.hfhouse.com/', // 网站主地址
+    name: 'qq.com', // 项目目录
+    baseUrl: 'http://www.qq.com/', // 网站主地址
     ignore: ['cnzz', 'tongji', 'jiathis'], // 忽略地址的关键词
     conLogo: '', // 内容图片的标识
     cssLogo: '', // css图片的标识，慎用，只会下载包含此标识的css图片
-    pageName: 'photo-list', // 页面的名称
+    pageName: 'index', // 页面的名称
+    debug: true //下载时打印调试信息
 };
 
 // request请求配置
 var options = {
-    url: 'http://www.hfhouse.com/research/', //要下载的网址
+    url: 'http://www.qq.com/', //要下载的网址
+    gzip: true, //是否开启gzip
     headers: {
-        'User-Agent': 'request'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.152 Safari/537.36'
     },
     encoding: null
 };
@@ -26,8 +28,26 @@ var options = {
 
 function callback(error, response, body) {
     if (!error && response.statusCode == 200) {
+        optionsBase.encoding = 'utf8';
+        var arr = body.toString().match(/<meta([^>]*?)>/g);
+        if (arr) {
+            arr.forEach(function(val) {
+                var match = val.match(/charset\s*=\s*(.+)\"/);
+                if (match && match[1]) {
+                
+                    if (match[1].substr(0, 1) == '"') match[1] = match[1].substr(1);
+                    if (match[1].indexOf('"') > 0) match[1] = match[1].substr(0, match[1].indexOf('"'));
+
+                    optionsBase.encoding = match[1].trim();
+                    return false;
+                }
+            })
+        }
+        if (optionsBase.debug) console.log(optionsBase.encoding);
         // 创建目录
         mkBaseDir();
+        // 对数据进行转码
+        body = iconv.decode(body, optionsBase.encoding);
         // 同时数据处理
         acquireData(body);
     }
@@ -39,11 +59,8 @@ request(options, callback);
 function acquireData(data) {
     // console.log(data);
     var $ = cheerio.load(data, {
-        decodeEntities: false
+        decodeEntities: false //关闭转换实体编码的功能
     });
-    optionsBase.encoding = $('meta[http-equiv="Content-Type"]').attr('content').split('=')[1];
-
-    data = iconv.decode(data, optionsBase.encoding);
 
     $('link[rel="stylesheet"]').each(function(i, el) {
         var $source = $(el).attr('href');
@@ -89,17 +106,15 @@ function acquireData(data) {
             $(el).attr('href', '###');
         }
     });
-    // 解析内联css
-    var inlineCss;
-    $('style').each(function(i, el) {
-        inlineCss += $(el).html();
-    });
-    parseCss(inlineCss, optionsBase.baseUrl, function(aacss) {
-        
-    });
     // 兼容st编辑器，多个中线注释会出错
     var fileData = $.html().replace(/<!--/g, '<!-- ').replace(/-->/g, ' -->'),
     filePath = optionsBase.name + '/' + optionsBase.pageName + '.html';
+    // 解析内联css
+    $('style').each(function(i, el) {
+        parseCss($(el).html(), optionsBase.baseUrl, function(cssData1) {
+            $(el).html(cssData1)
+        });
+    });
 
     fileData = iconv.encode(fileData, optionsBase.encoding);
     // 创建html文件
@@ -130,10 +145,12 @@ function mkBaseDir() {
  * @return {[type]}            [description]
  */
 function download(uri, isCon, callback) {
-    // return;
+    return;
     uri = uri.split('?')[0];
-    // console.log(uri);
-    if (uri.indexOf('http') == -1) {
+    // console.log(uri); 处理像'//www.jqduang.com/aaa.css'这种链接
+    if (uri.indexOf('//') == 0) {
+        uri = 'http:' + uri;
+    } else if (uri.indexOf('http') != 0) {
         uri = (uri.indexOf('/') == 0 ? optionsBase.baseUrl : options.url) + uri;
     }
 
@@ -156,18 +173,33 @@ function download(uri, isCon, callback) {
             return false;
         }
         var fileName = path.basename(uri).split('?')[0];
-        request(uri, function(error, response, bodycss) {
-            if (extname == '.css' && !error && response.statusCode == 200) {
-                parseCss(bodycss, uri, function(dirHash) {
-                    console.log(dirHash);
-                });
-            } else if (error) {
+        request(uri, function(error, response, fileData) {
+            if (!error && response.statusCode == 200) {
+                // 对css专项处理
+                if (extname == '.css') {
+                    parseCss(fileData, uri, function(fileData1) {
+                        // 创建文件
+                        fs.writeFile(dirName + '/' + fileName, fileData1, function(err) {
+                            if (err) {
+                                console.log('1:' + err);
+                            } else {
+                                console.log(dirName + '/' + fileName + ' created');
+                            };
+                        })
+                    })
+                } else {
+                    // 创建文件
+                    fs.writeFile(dirName + '/' + fileName, fileData, function(err) {
+                        if (err) {
+                            console.log('1:' + err);
+                        } else {
+                            console.log(dirName + '/' + fileName + ' created');
+                        };
+                    })
+                };
+            } else {
                 console.log('3:' + error + ':' + uri);
             }
-        })
-        .pipe(fs.createWriteStream(dirName + '/' + fileName))
-        .on('close', function() {
-            console.log('file '+ dirName + '/' + fileName + ' created');
         });
     });
 };
@@ -178,24 +210,24 @@ function download(uri, isCon, callback) {
  * @return {null}         
  */
 function parseCss(data, uri, callback) {
-    var urlsRegexp = /\(([^)]*)\)/ig,
+    var urlsRegexp = /url\((.+).(?:png|png\?.+|jpg|jpg\?.+|jpeg|jpeg\?.+|bmp|gif|gif\?.+)\)/ig,
     aImgUrls = data && data.match(urlsRegexp) || null,
     hash = {},
     dirHash = {};
     aImgUrls && aImgUrls.forEach(function(uri1, i) {
-        if (uri1.indexOf(',') == -1 && !hash[uri1] && uri1.indexOf(optionsBase.cssLogo) != -1) {
-            uri1 = uri1.replace(/\(('|"|)|('|"|)\)/g, '').split('?')[0];
-console.log(uri1 + '---------------');
+        if (!hash[uri1] && uri1.indexOf(optionsBase.cssLogo) != -1) {
+                console.log(uri1 + '----------');
+            uri1 = uri1.replace(/url\(('|"|)|('|"|)\)/g, '').split('?')[0];
+
             var imgName = path.basename(uri1);
             hash[uri1] = true;
             // return;
             // console.log(path.dirname(uri).replace('css', '') + e.replace('../', ''));
-
             if (uri1.indexOf('http') == -1) {
                 if (!dirHash[path.dirname(uri1)]) dirHash[path.dirname(uri1)] = true;
                 uri1 = url.resolve(uri, uri1);
             } else {
-                var hurl = uri1.replace(uri1, '');
+                var hurl = uri1.replace(imgName, '');
                 if (!dirHash[hurl]) dirHash[hurl] = true;
             }
 
@@ -204,13 +236,17 @@ console.log(uri1 + '---------------');
                     console.log('4:' + err + ':' + uri1);
                 }
             })
-            // .pipe(fs.createWriteStream(optionsBase.name + '/images/' + imgName))
+            .pipe(fs.createWriteStream(optionsBase.name + '/images/' + imgName))
             .on('close', function() {
-                console.log('file cssimg '+ optionsBase.name + '/images/' + imgName + ' created');
+                console.log(optionsBase.name + '/images/' + imgName + ' created cssimg');
             });
         }
     })
-    callback.call(this, dirHash);
+
+    for (i in dirHash) {
+        // data = data.replace(new RegExp(i,"gm"), '../images/');
+    }
+    callback.call(this, data);
 
 }
 /**
