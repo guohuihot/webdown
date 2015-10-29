@@ -6,8 +6,8 @@ var iconv = require('iconv-lite');
 var url = require('url');
 // 基本配置项
 var optionsBase = {
-    name: 'qq.com', // 项目目录
-    baseUrl: 'http://www.qq.com/', // 网站主地址
+    name: 'yixiang', // 项目目录
+    baseUrl: 'http://newhouse.fang.com/', // 网站主地址
     ignore: ['cnzz', 'tongji', 'jiathis'], // 忽略地址的关键词
     conLogo: '', // 内容图片的标识
     cssLogo: '', // css图片的标识，慎用，只会下载包含此标识的css图片
@@ -17,7 +17,7 @@ var optionsBase = {
 
 // request请求配置
 var options = {
-    url: 'http://www.qq.com/', //要下载的网址
+    url: 'http://newhouse.fang.com/entrust/', //要下载的网址
     gzip: true, //是否开启gzip
     headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.152 Safari/537.36'
@@ -145,7 +145,7 @@ function mkBaseDir() {
  * @return {[type]}            [description]
  */
 function download(uri, isCon, callback) {
-    return;
+    // return;
     uri = uri.split('?')[0];
     // console.log(uri); 处理像'//www.jqduang.com/aaa.css'这种链接
     if (uri.indexOf('//') == 0) {
@@ -216,7 +216,7 @@ function parseCss(data, uri, callback) {
     dirHash = {};
     aImgUrls && aImgUrls.forEach(function(uri1, i) {
         if (!hash[uri1] && uri1.indexOf(optionsBase.cssLogo) != -1) {
-                console.log(uri1 + '----------');
+                // console.log(uri1 + '----------');
             uri1 = uri1.replace(/url\(('|"|)|('|"|)\)/g, '').split('?')[0];
 
             var imgName = path.basename(uri1);
@@ -244,7 +244,7 @@ function parseCss(data, uri, callback) {
     })
 
     for (i in dirHash) {
-        // data = data.replace(new RegExp(i,"gm"), '../images/');
+        data = data.replace(new RegExp(i,"gm"), '../images/');
     }
     callback.call(this, data);
 
