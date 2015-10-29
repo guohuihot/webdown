@@ -3,24 +3,26 @@ var path = require('path');
 var request = require('request');
 var cheerio = require('cheerio');
 var iconv = require('iconv-lite');
+var url = require('url');
 // 基本配置项
 var optionsBase = {
-    name: 'demo', // 项目目录
-    baseUrl: 'http://www.qq.com/', // 网站主地址
-    ignore: ['cnzz', 'tongji', 'jiathis', 'tools'], // 忽略地址的关键词
-    conLogo: 'img1.gtimg.com', // 内容图片的标识
-    cssLogo: 'mat1.', // css图片的标识，慎用，只会下载包含此标识的css图片
-    pageName: 'demo', // 页面的名称
+    name: 'hfhouse.com', // 项目目录
+    baseUrl: 'http://www.hfhouse.com/', // 网站主地址
+    ignore: ['cnzz', 'tongji', 'jiathis'], // 忽略地址的关键词
+    conLogo: '', // 内容图片的标识
+    cssLogo: '', // css图片的标识，慎用，只会下载包含此标识的css图片
+    pageName: 'photo-list', // 页面的名称
 };
 
 // request请求配置
 var options = {
-    url: 'http://www.qq.com/', //要下载的网址
+    url: 'http://www.hfhouse.com/research/', //要下载的网址
     headers: {
         'User-Agent': 'request'
     },
     encoding: null
 };
+
 
 function callback(error, response, body) {
     if (!error && response.statusCode == 200) {
@@ -39,9 +41,9 @@ function acquireData(data) {
     var $ = cheerio.load(data, {
         decodeEntities: false
     });
-    optionsBase.encoding = $('mate[http-equiv="Content-Type"]').attr('content').indexOf('utf') == -1 ? 'gbk' : 'utf8';
-    
-    if (optionsBase.encoding == 'gbk') data = iconv.decode(data, 'gbk');
+    optionsBase.encoding = $('meta[http-equiv="Content-Type"]').attr('content').split('=')[1];
+
+    data = iconv.decode(data, optionsBase.encoding);
 
     $('link[rel="stylesheet"]').each(function(i, el) {
         var $source = $(el).attr('href');
@@ -99,7 +101,7 @@ function acquireData(data) {
     var fileData = $.html().replace(/<!--/g, '<!-- ').replace(/-->/g, ' -->'),
     filePath = optionsBase.name + '/' + optionsBase.pageName + '.html';
 
-    if (optionsBase.encoding == 'gbk') fileData = iconv.encode(fileData, 'gbk');
+    fileData = iconv.encode(fileData, optionsBase.encoding);
     // 创建html文件
     fs.writeFile(filePath, fileData, function(err) {
         if (err) {
@@ -128,20 +130,24 @@ function mkBaseDir() {
  * @return {[type]}            [description]
  */
 function download(uri, isCon, callback) {
-    return;
+    // return;
+    uri = uri.split('?')[0];
+    // console.log(uri);
     if (uri.indexOf('http') == -1) {
         uri = (uri.indexOf('/') == 0 ? optionsBase.baseUrl : options.url) + uri;
     }
 
     var dirName = optionsBase.name + '/',
-        extname = path.extname(uri.split('?')[0]);
+        extname = path.extname(uri);
 
     if (/.(?:png|jpg|jpeg|bmp|gif)/.test(extname)) {
         dirName += isCon ? 'pic' : 'images';
     } else if (/.(?:css|js)/.test(extname)) {
         dirName += extname.replace('.', '');
+    } else {
+        return false;
     }
-
+    // console.log(uri);
     request.head(uri, function(err, res, body) {
         // console.log('content-type:', res.headers['content-type'].charset);  //这里返回图片的类型
         // console.log('content-length:', res.headers['content-length']);  //图片大小
@@ -152,11 +158,11 @@ function download(uri, isCon, callback) {
         var fileName = path.basename(uri).split('?')[0];
         request(uri, function(error, response, bodycss) {
             if (extname == '.css' && !error && response.statusCode == 200) {
-                parseCss(bodycss, uri, function(convertCss) {
-                    
+                parseCss(bodycss, uri, function(dirHash) {
+                    console.log(dirHash);
                 });
             } else if (error) {
-                console.log('3:' + err + ':' + uri);
+                console.log('3:' + error + ':' + uri);
             }
         })
         .pipe(fs.createWriteStream(dirName + '/' + fileName))
@@ -171,20 +177,26 @@ function download(uri, isCon, callback) {
  * @param  {string} baseUrl css文件地址
  * @return {null}         
  */
-function parseCss(data, baseUrl, callback) {
+function parseCss(data, uri, callback) {
     var urlsRegexp = /\(([^)]*)\)/ig,
-    aImgUrls = data.match(urlsRegexp),
-    sImgUrls = 'aaa';
-
-    aImgUrls && aImgUrls.forEach(function(e, i) {
-        if (e.indexOf(',') == -1 && sImgUrls.indexOf(e) == -1 && e.indexOf(optionsBase.cssLogo) != -1) {
-            var uri1 = e = e.replace(/\(('|"|)|('|"|)\)/g, '');
-            sImgUrls += '|' + e;
-
+    aImgUrls = data && data.match(urlsRegexp) || null,
+    hash = {},
+    dirHash = {};
+    aImgUrls && aImgUrls.forEach(function(uri1, i) {
+        if (uri1.indexOf(',') == -1 && !hash[uri1] && uri1.indexOf(optionsBase.cssLogo) != -1) {
+            uri1 = uri1.replace(/\(('|"|)|('|"|)\)/g, '').split('?')[0];
+console.log(uri1 + '---------------');
+            var imgName = path.basename(uri1);
+            hash[uri1] = true;
             // return;
             // console.log(path.dirname(uri).replace('css', '') + e.replace('../', ''));
-            if (e.indexOf('http') == -1) {
-                uri1 = path.dirname(baseUrl).replace('css', '') + e.replace('../', '');
+
+            if (uri1.indexOf('http') == -1) {
+                if (!dirHash[path.dirname(uri1)]) dirHash[path.dirname(uri1)] = true;
+                uri1 = url.resolve(uri, uri1);
+            } else {
+                var hurl = uri1.replace(uri1, '');
+                if (!dirHash[hurl]) dirHash[hurl] = true;
             }
 
             request(uri1, function(err, res, body) {
@@ -192,13 +204,14 @@ function parseCss(data, baseUrl, callback) {
                     console.log('4:' + err + ':' + uri1);
                 }
             })
-            .pipe(fs.createWriteStream(optionsBase.name + '/images/' + path.basename(e)))
+            // .pipe(fs.createWriteStream(optionsBase.name + '/images/' + imgName))
             .on('close', function() {
-                console.log('file css images '+ path.basename(e) + ' created');
+                console.log('file cssimg '+ optionsBase.name + '/images/' + imgName + ' created');
             });
-            callback.call(this, data);
         }
     })
+    callback.call(this, dirHash);
+
 }
 /**
  * 创建文件目录
