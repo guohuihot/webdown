@@ -6,18 +6,18 @@ var iconv = require('iconv-lite');
 var url = require('url');
 // 基本配置项
 var optionsBase = {
-    name: 'yixiang', // 项目目录
-    baseUrl: 'http://newhouse.fang.com/', // 网站主地址
+    name: 'mhongbao', // 项目目录
+    baseUrl: 'http://m.fang.com/', // 网站主地址
     ignore: ['cnzz', 'tongji', 'jiathis'], // 忽略地址的关键词
     conLogo: '', // 内容图片的标识
     cssLogo: '', // css图片的标识，慎用，只会下载包含此标识的css图片
-    pageName: 'index', // 页面的名称
+    pageName: 'baoming', // 页面的名称
     debug: true //下载时打印调试信息
 };
 
 // request请求配置
 var options = {
-    url: 'http://newhouse.fang.com/entrust/', //要下载的网址
+    url: 'http://m.fang.com/xf/NewWAPRedBag/RedBagReceive/?newcode=1010760229&RedBagId=21190&fptn=wap_bj_newhousedetail_1', //要下载的网址
     gzip: true, //是否开启gzip
     headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.152 Safari/537.36'
@@ -90,8 +90,9 @@ function acquireData(data) {
         optionsBase.ignore.forEach(function(e, i) {
             if ($source.indexOf(e) != -1) isRequireFile = false;
         })
+        // console.log($source);
         if (!isRequireFile) return;
-        if ($source.indexOf(optionsBase.conLogo) != -1) {
+        if (optionsBase.conLogo && $source.indexOf(optionsBase.conLogo) != -1) {
             download($source, 1);
             $(el).attr('src', 'pic/' + path.basename($source));
         } else {
@@ -160,47 +161,38 @@ function download(uri, isCon, callback) {
     if (/.(?:png|jpg|jpeg|bmp|gif)/.test(extname)) {
         dirName += isCon ? 'pic' : 'images';
     } else if (/.(?:css|js)/.test(extname)) {
-        dirName += extname.replace('.', '');
+        dirName += extname.replace('.', '').replace(' ', '');
     } else {
         return false;
     }
-    // console.log(uri);
-    request.head(uri, function(err, res, body) {
-        // console.log('content-type:', res.headers['content-type'].charset);  //这里返回图片的类型
-        // console.log('content-length:', res.headers['content-length']);  //图片大小
-        if (err) {
-            console.log('2:' + err + ':' + uri);
-            return false;
-        }
-        var fileName = path.basename(uri).split('?')[0];
-        request(uri, function(error, response, fileData) {
-            if (!error && response.statusCode == 200) {
-                // 对css专项处理
-                if (extname == '.css') {
-                    parseCss(fileData, uri, function(fileData1) {
-                        // 创建文件
-                        fs.writeFile(dirName + '/' + fileName, fileData1, function(err) {
-                            if (err) {
-                                console.log('1:' + err);
-                            } else {
-                                console.log(dirName + '/' + fileName + ' created');
-                            };
-                        })
-                    })
-                } else {
+    request(uri, function(error, response, fileData) {
+        if (!error && response.statusCode == 200) {
+            var fileName = path.basename(uri).split('?')[0].replace(/ /g, '');
+            // 对css专项处理
+            if (extname == '.css') {
+                parseCss(fileData, uri, function(fileData1) {
                     // 创建文件
-                    fs.writeFile(dirName + '/' + fileName, fileData, function(err) {
+                    fs.writeFile(dirName + '/' + fileName, fileData1, function(err) {
                         if (err) {
                             console.log('1:' + err);
                         } else {
                             console.log(dirName + '/' + fileName + ' created');
                         };
                     })
-                };
+                })
             } else {
-                console.log('3:' + error + ':' + uri);
-            }
-        });
+                // 创建文件
+                fs.writeFile(dirName + '/' + fileName, fileData, function(err) {
+                    if (err) {
+                        console.log('1:' + err);
+                    } else {
+                        console.log(dirName + '/' + fileName + ' created');
+                    };
+                })
+            };
+        } else {
+            console.log('3:' + error + ':' + uri);
+        }
     });
 };
 /**
